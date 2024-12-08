@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
-	userGRPC "github.com/DanKo-code/FitnessCenter-Coach/internal/delivery/grpc"
+	coachGRPC "github.com/DanKo-code/FitnessCenter-Coach/internal/delivery/grpc"
 	"github.com/DanKo-code/FitnessCenter-Coach/internal/models"
 	"github.com/DanKo-code/FitnessCenter-Coach/internal/repository/postgres"
 	"github.com/DanKo-code/FitnessCenter-Coach/internal/usecase"
@@ -55,7 +55,7 @@ func NewAppGRPC(cloudConfig *models.CloudConfig) (*AppGRPC, error) {
 
 	gRPCServer := grpc.NewServer()
 
-	userGRPC.RegisterCoachServer(gRPCServer, coachUseCase, localStackUseCase)
+	coachGRPC.RegisterCoachServer(gRPCServer, coachUseCase, localStackUseCase)
 
 	return &AppGRPC{
 		gRPCServer:   gRPCServer,
