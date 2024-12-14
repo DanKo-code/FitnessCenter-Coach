@@ -14,4 +14,5 @@ type CoachUseCase interface {
 	GetCoachById(ctx context.Context, uuid uuid.UUID) (*models.Coach, error)
 
 	GetCoaches(ctx context.Context) ([]*models.Coach, error)
+	GetCoachesWithServices(ctx context.Context) ([]*dtos.CoachWithServices, error)
 }

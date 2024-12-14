@@ -10,6 +10,7 @@ import (
 	"github.com/DanKo-code/FitnessCenter-Coach/internal/usecase/coach_usecase"
 	"github.com/DanKo-code/FitnessCenter-Coach/internal/usecase/localstack_usecase"
 	"github.com/DanKo-code/FitnessCenter-Coach/pkg/logger"
+	serviceGRPC "github.com/DanKo-code/FitnessCenter-Protobuf/gen/FitnessCenter.protobuf.service"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -17,6 +18,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"net"
 	"os"
 	"os/signal"
@@ -35,7 +37,15 @@ func NewAppGRPC(cloudConfig *models.CloudConfig) (*AppGRPC, error) {
 
 	repository := postgres.NewCoachRepository(db)
 
-	coachUseCase := user_usecase.NewCoachUseCase(repository)
+	connService, err := grpc.NewClient(os.Getenv("SERVICE_SERVICE_PORT"), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		logger.ErrorLogger.Printf("failed to connect to Service server: %v", err)
+		return nil, err
+	}
+
+	serviceClient := serviceGRPC.NewServiceClient(connService)
+
+	coachUseCase := user_usecase.NewCoachUseCase(repository, &serviceClient)
 
 	awsCfg, err := config.LoadDefaultConfig(context.TODO(),
 		config.WithRegion(cloudConfig.Region),

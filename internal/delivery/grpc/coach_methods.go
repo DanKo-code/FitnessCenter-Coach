@@ -279,6 +279,40 @@ func (c *CoachgRPC) GetCoaches(ctx context.Context, _ *emptypb.Empty) (*coachPro
 	return response, nil
 }
 
+func (c *CoachgRPC) GetCoachesWithServices(ctx context.Context, empty *emptypb.Empty) (*coachProtobuf.GetCoachesWithServicesResponse, error) {
+
+	coachesWithServices, err := c.coachUseCase.GetCoachesWithServices(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var coachesWithServicesForResponse []*coachProtobuf.CoachWithServices
+	for _, coachWithServices := range coachesWithServices {
+
+		coachObject := &coachProtobuf.CoachObject{
+			Id:          coachWithServices.Coach.Id.String(),
+			Name:        coachWithServices.Coach.Name,
+			Description: coachWithServices.Coach.Description,
+			Photo:       coachWithServices.Coach.Photo,
+			CreatedTime: coachWithServices.Coach.CreatedTime.String(),
+			UpdatedTime: coachWithServices.Coach.UpdatedTime.String(),
+		}
+
+		coachWithServices := &coachProtobuf.CoachWithServices{
+			Coach:    coachObject,
+			Services: coachWithServices.Services,
+		}
+
+		coachesWithServicesForResponse = append(coachesWithServicesForResponse, coachWithServices)
+	}
+
+	response := &coachProtobuf.GetCoachesWithServicesResponse{
+		CoachesWithServices: coachesWithServicesForResponse,
+	}
+
+	return response, nil
+}
+
 func GetObjectData[T any, R any](
 	g *grpc.ClientStreamingServer[T, R],
 	extractObjectData func(chunk *T) interface{},
