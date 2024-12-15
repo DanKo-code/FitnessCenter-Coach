@@ -34,11 +34,8 @@ func (coachRep *CoachRepository) CreateCoach(ctx context.Context, coach *models.
 }
 
 func (coachRep *CoachRepository) GetCoachById(ctx context.Context, id uuid.UUID) (*models.Coach, error) {
-	var coach *models.Coach
-	err := coachRep.db.GetContext(ctx, &coach, `
-		SELECT id, name, description, photo, created_time, updated_time
-		FROM "coach"
-		WHERE id = :id`, id)
+	coach := &models.Coach{}
+	err := coachRep.db.GetContext(ctx, coach, `SELECT id, name, description, photo, created_time, updated_time FROM "coach" WHERE id = $1`, id)
 	if err != nil {
 		logger.ErrorLogger.Printf("Error GetCoachById: %v", err)
 		return nil, err

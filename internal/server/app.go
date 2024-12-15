@@ -10,7 +10,9 @@ import (
 	"github.com/DanKo-code/FitnessCenter-Coach/internal/usecase/coach_usecase"
 	"github.com/DanKo-code/FitnessCenter-Coach/internal/usecase/localstack_usecase"
 	"github.com/DanKo-code/FitnessCenter-Coach/pkg/logger"
+	reviewGRPC "github.com/DanKo-code/FitnessCenter-Protobuf/gen/FitnessCenter.protobuf.review"
 	serviceGRPC "github.com/DanKo-code/FitnessCenter-Protobuf/gen/FitnessCenter.protobuf.service"
+	userGRPC "github.com/DanKo-code/FitnessCenter-Protobuf/gen/FitnessCenter.protobuf.user"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -42,10 +44,23 @@ func NewAppGRPC(cloudConfig *models.CloudConfig) (*AppGRPC, error) {
 		logger.ErrorLogger.Printf("failed to connect to Service server: %v", err)
 		return nil, err
 	}
-
 	serviceClient := serviceGRPC.NewServiceClient(connService)
 
-	coachUseCase := user_usecase.NewCoachUseCase(repository, &serviceClient)
+	connReview, err := grpc.NewClient(os.Getenv("REVIEW_SERVICE_PORT"), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		logger.ErrorLogger.Printf("failed to connect to Review server: %v", err)
+		return nil, err
+	}
+	reviewClient := reviewGRPC.NewReviewClient(connReview)
+
+	connUser, err := grpc.NewClient(os.Getenv("USER_SERVICE_PORT"), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		logger.ErrorLogger.Printf("failed to connect to User server: %v", err)
+		return nil, err
+	}
+	userClient := userGRPC.NewUserClient(connUser)
+
+	coachUseCase := user_usecase.NewCoachUseCase(repository, &serviceClient, &reviewClient, &userClient)
 
 	awsCfg, err := config.LoadDefaultConfig(context.TODO(),
 		config.WithRegion(cloudConfig.Region),

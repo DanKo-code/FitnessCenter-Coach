@@ -7,7 +7,10 @@ import (
 	"github.com/DanKo-code/FitnessCenter-Coach/internal/models"
 	"github.com/DanKo-code/FitnessCenter-Coach/internal/repository"
 	"github.com/DanKo-code/FitnessCenter-Coach/pkg/logger"
+	coachGRPC "github.com/DanKo-code/FitnessCenter-Protobuf/gen/FitnessCenter.protobuf.coach"
+	reviewGRPC "github.com/DanKo-code/FitnessCenter-Protobuf/gen/FitnessCenter.protobuf.review"
 	serviceGRPC "github.com/DanKo-code/FitnessCenter-Protobuf/gen/FitnessCenter.protobuf.service"
+	userGRPC "github.com/DanKo-code/FitnessCenter-Protobuf/gen/FitnessCenter.protobuf.user"
 	"github.com/google/uuid"
 	"time"
 )
@@ -15,10 +18,21 @@ import (
 type CoachUseCase struct {
 	coachRepo     repository.CoachRepository
 	serviceClient *serviceGRPC.ServiceClient
+	reviewClient  *reviewGRPC.ReviewClient
+	userClient    *userGRPC.UserClient
 }
 
-func NewCoachUseCase(coachRepo repository.CoachRepository, serviceClient *serviceGRPC.ServiceClient) *CoachUseCase {
-	return &CoachUseCase{coachRepo: coachRepo, serviceClient: serviceClient}
+func NewCoachUseCase(
+	coachRepo repository.CoachRepository,
+	serviceClient *serviceGRPC.ServiceClient,
+	reviewClient *reviewGRPC.ReviewClient,
+	userClient *userGRPC.UserClient,
+) *CoachUseCase {
+	return &CoachUseCase{
+		coachRepo:     coachRepo,
+		serviceClient: serviceClient,
+		reviewClient:  reviewClient,
+		userClient:    userClient}
 }
 
 func (c *CoachUseCase) CreateCoach(
@@ -104,53 +118,114 @@ func (c *CoachUseCase) GetCoaches(
 
 func (c *CoachUseCase) GetCoachesWithServices(
 	ctx context.Context,
-) ([]*dtos.CoachWithServices, error) {
+) (*coachGRPC.GetCoachesWithServicesWithReviewsWithUsersResponse, error) {
 	coaches, err := c.coachRepo.GetCoaches(ctx)
 	if err != nil {
 		logger.ErrorLogger.Printf("Failed GetCoaches: %s", err)
 		return nil, err
 	}
 
-	getCoachesServicesRequest := &serviceGRPC.GetCoachesServicesRequest{}
-
+	//get coaches ids
+	var coachesIds []string
 	for _, coach := range coaches {
-		getCoachesServicesRequest.CoachIds =
-			append(
-				getCoachesServicesRequest.CoachIds,
-				coach.Id.String(),
-			)
+		coachesIds = append(coachesIds, coach.Id.String())
 	}
 
+	//get CoachesIdsWithServices
+	getCoachesServicesRequest := &serviceGRPC.GetCoachesServicesRequest{
+		CoachIds: coachesIds,
+	}
 	getCoachesServicesResponse, err := (*c.serviceClient).GetCoachesServices(ctx, getCoachesServicesRequest)
 	if err != nil {
 		logger.ErrorLogger.Printf("Failed GetCoachesServices: %s", err)
 		return nil, err
 	}
-
-	var coachWithServices []*dtos.CoachWithServices
-
-	//add coaches
-	for _, coach := range coaches {
-
-		aws := &dtos.CoachWithServices{
-			Coach:    coach,
-			Services: nil,
-		}
-
-		coachWithServices = append(coachWithServices, aws)
+	coachIdServices := make(map[string][]*serviceGRPC.ServiceObject)
+	for _, i2 := range getCoachesServicesResponse.CoachIdsWithServices {
+		coachIdServices[i2.CoachId] = append(coachIdServices[i2.CoachId], i2.ServiceObjects...)
 	}
 
-	//add services
-	for _, extValue := range getCoachesServicesResponse.CoachIdsWithServices {
+	//get CoachesIdsWithReviews
+	getCoachesReviewsRequest := &reviewGRPC.GetCoachesReviewsRequest{
+		CoachesIds: coachesIds,
+	}
+	GetCoachesReviewsResponse, err := (*c.reviewClient).GetCoachesReviews(ctx, getCoachesReviewsRequest)
+	if err != nil {
+		return nil, err
+	}
+	coachIdReviews := make(map[string][]*reviewGRPC.ReviewObject)
+	for _, i2 := range GetCoachesReviewsResponse.CoachIdWithReviewObject {
+		coachIdReviews[i2.CoachId] = append(coachIdReviews[i2.CoachId], i2.ReviewObjects...)
+	}
 
-		coachId := extValue.CoachId
+	//get unique user ids
+	uniqUserIds := make(map[string]struct{})
+	for _, object := range GetCoachesReviewsResponse.CoachIdWithReviewObject {
 
-		for key, value := range coachWithServices {
-			if value.Coach.Id.String() == coachId {
-				coachWithServices[key].Services = append(coachWithServices[key].Services, extValue.ServiceObjects...)
+		for _, reviewObject := range object.ReviewObjects {
+			if _, ok := uniqUserIds[reviewObject.UserId]; !ok {
+				uniqUserIds[reviewObject.UserId] = struct{}{}
 			}
 		}
 	}
+	var uniqUserIdsSl []string
+	for key, _ := range uniqUserIds {
+		uniqUserIdsSl = append(uniqUserIdsSl, key)
+	}
 
-	return coachWithServices, nil
+	//get userIdsWithUsers
+	getUsersByIdsRequest := &userGRPC.GetUsersByIdsRequest{
+		UsersIds: uniqUserIdsSl,
+	}
+	getUsersByIdsResponse, err := (*c.userClient).GetUsersByIds(ctx, getUsersByIdsRequest)
+	if err != nil {
+		return nil, err
+	}
+	userIdUser := make(map[string]*userGRPC.UserObject)
+	for _, i2 := range getUsersByIdsResponse.UsersObjects {
+		userIdUser[i2.Id] = i2
+	}
+
+	// create method response
+	var coachWithServicesWithReviewsWithUsersSl []*coachGRPC.CoachWithServicesWithReviewsWithUsers
+
+	response := &coachGRPC.GetCoachesWithServicesWithReviewsWithUsersResponse{
+		CoachWithServicesWithReviewsWithUsers: nil,
+	}
+
+	for _, coach := range coaches {
+
+		coachObject := &coachGRPC.CoachObject{
+			Id:          coach.Id.String(),
+			Name:        coach.Name,
+			Description: coach.Description,
+			Photo:       coach.Photo,
+			CreatedTime: coach.CreatedTime.String(),
+			UpdatedTime: coach.UpdatedTime.String(),
+		}
+
+		coachServices := coachIdServices[coach.Id.String()]
+
+		var reviewsWithUsers []*coachGRPC.ReviewWithUser
+		for _, i2 := range coachIdReviews[coach.Id.String()] {
+			reviewWithUser := &coachGRPC.ReviewWithUser{
+				ReviewObject: i2,
+				UserObject:   userIdUser[i2.UserId],
+			}
+
+			reviewsWithUsers = append(reviewsWithUsers, reviewWithUser)
+		}
+
+		coachWithServicesWithReviewsWithUsers := &coachGRPC.CoachWithServicesWithReviewsWithUsers{
+			Coach:          coachObject,
+			Services:       coachServices,
+			ReviewWithUser: reviewsWithUsers,
+		}
+
+		coachWithServicesWithReviewsWithUsersSl = append(coachWithServicesWithReviewsWithUsersSl, coachWithServicesWithReviewsWithUsers)
+	}
+
+	response.CoachWithServicesWithReviewsWithUsers = coachWithServicesWithReviewsWithUsersSl
+
+	return response, nil
 }

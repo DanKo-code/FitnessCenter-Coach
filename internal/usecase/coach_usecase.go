@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/DanKo-code/FitnessCenter-Coach/internal/dtos"
 	"github.com/DanKo-code/FitnessCenter-Coach/internal/models"
+	coachGRPC "github.com/DanKo-code/FitnessCenter-Protobuf/gen/FitnessCenter.protobuf.coach"
 	"github.com/google/uuid"
 )
 
@@ -14,5 +15,5 @@ type CoachUseCase interface {
 	GetCoachById(ctx context.Context, uuid uuid.UUID) (*models.Coach, error)
 
 	GetCoaches(ctx context.Context) ([]*models.Coach, error)
-	GetCoachesWithServices(ctx context.Context) ([]*dtos.CoachWithServices, error)
+	GetCoachesWithServices(ctx context.Context) (*coachGRPC.GetCoachesWithServicesWithReviewsWithUsersResponse, error)
 }
