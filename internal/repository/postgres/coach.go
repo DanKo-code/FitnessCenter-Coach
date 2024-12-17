@@ -89,9 +89,9 @@ func (coachRep *CoachRepository) UpdateCoach(ctx context.Context, cmd *dtos.Upda
 }
 
 func (coachRep *CoachRepository) DeleteCoachById(ctx context.Context, id uuid.UUID) error {
-	_, err := coachRep.db.NamedExecContext(ctx, `
+	_, err := coachRep.db.ExecContext(ctx, `
 		DELETE FROM "coach"
-		WHERE id = :id`, id)
+		WHERE id = $1`, id)
 	if err != nil {
 		logger.ErrorLogger.Printf("Error DeleteCoach: %v", err)
 		return err

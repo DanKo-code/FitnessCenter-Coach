@@ -80,7 +80,7 @@ func NewAppGRPC(cloudConfig *models.CloudConfig) (*AppGRPC, error) {
 
 	gRPCServer := grpc.NewServer()
 
-	coachGRPC.RegisterCoachServer(gRPCServer, coachUseCase, localStackUseCase)
+	coachGRPC.RegisterCoachServer(gRPCServer, coachUseCase, localStackUseCase, &serviceClient)
 
 	return &AppGRPC{
 		gRPCServer:   gRPCServer,

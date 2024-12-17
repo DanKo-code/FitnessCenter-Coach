@@ -8,12 +8,15 @@ import (
 	"github.com/DanKo-code/FitnessCenter-Coach/internal/usecase"
 	"github.com/DanKo-code/FitnessCenter-Coach/pkg/logger"
 	coachProtobuf "github.com/DanKo-code/FitnessCenter-Protobuf/gen/FitnessCenter.protobuf.coach"
+	serviceGRPC "github.com/DanKo-code/FitnessCenter-Protobuf/gen/FitnessCenter.protobuf.service"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"io"
+	"reflect"
 	"time"
 )
 
@@ -22,12 +25,24 @@ var _ coachProtobuf.CoachServer = (*CoachgRPC)(nil)
 type CoachgRPC struct {
 	coachProtobuf.UnimplementedCoachServer
 
-	coachUseCase usecase.CoachUseCase
-	cloudUseCase usecase.CloudUseCase
+	coachUseCase  usecase.CoachUseCase
+	cloudUseCase  usecase.CloudUseCase
+	serviceClient *serviceGRPC.ServiceClient
 }
 
-func RegisterCoachServer(gRPC *grpc.Server, coachUseCase usecase.CoachUseCase, cloudUseCase usecase.CloudUseCase) {
-	coachProtobuf.RegisterCoachServer(gRPC, &CoachgRPC{coachUseCase: coachUseCase, cloudUseCase: cloudUseCase})
+func RegisterCoachServer(
+	gRPC *grpc.Server,
+	coachUseCase usecase.CoachUseCase,
+	cloudUseCase usecase.CloudUseCase,
+	serviceClient *serviceGRPC.ServiceClient,
+) {
+	coachProtobuf.RegisterCoachServer(
+		gRPC,
+		&CoachgRPC{
+			coachUseCase:  coachUseCase,
+			cloudUseCase:  cloudUseCase,
+			serviceClient: serviceClient,
+		})
 }
 
 func (c *CoachgRPC) CreateCoach(g grpc.ClientStreamingServer[coachProtobuf.CreateCoachRequest, coachProtobuf.CreateCoachResponse]) error {
@@ -60,7 +75,6 @@ func (c *CoachgRPC) CreateCoach(g grpc.ClientStreamingServer[coachProtobuf.Creat
 		Id:          uuid.New(),
 		Name:        castedCoachData.Name,
 		Description: castedCoachData.Description,
-		Photo:       "",
 	}
 
 	var photoURL string
@@ -89,6 +103,28 @@ func (c *CoachgRPC) CreateCoach(g grpc.ClientStreamingServer[coachProtobuf.Creat
 		return status.Error(codes.Internal, "Failed to create coach")
 	}
 
+	createCoachServicesRequest := &serviceGRPC.CreateCoachServicesRequest{
+		CoachService: &serviceGRPC.CoachService{
+			CoachId:   coach.Id.String(),
+			ServiceId: castedCoachData.CoachServiceIds,
+		},
+	}
+	services, err := (*c.serviceClient).CreateCoachServices(context.TODO(), createCoachServicesRequest)
+	if err != nil {
+		return err
+	}
+
+	var coachsServices *serviceGRPC.GetCoachesServicesResponse
+	if services != nil {
+		getCoachesServicesRequest := &serviceGRPC.GetCoachesServicesRequest{
+			CoachIds: []string{coach.Id.String()},
+		}
+		coachsServices, err = (*c.serviceClient).GetCoachesServices(context.TODO(), getCoachesServicesRequest)
+		if err != nil {
+			return err
+		}
+	}
+
 	coachObject := &coachProtobuf.CoachObject{
 		Id:          coach.Id.String(),
 		Name:        coach.Name,
@@ -98,8 +134,21 @@ func (c *CoachgRPC) CreateCoach(g grpc.ClientStreamingServer[coachProtobuf.Creat
 		UpdatedTime: coach.UpdatedTime.String(),
 	}
 
+	var coachWithServices *coachProtobuf.CoachWithServices
+	if coachsServices != nil {
+		coachWithServices = &coachProtobuf.CoachWithServices{
+			Coach:    coachObject,
+			Services: coachsServices.CoachIdsWithServices[0].ServiceObjects,
+		}
+	} else {
+		coachWithServices = &coachProtobuf.CoachWithServices{
+			Coach:    coachObject,
+			Services: nil,
+		}
+	}
+
 	response := &coachProtobuf.CreateCoachResponse{
-		CoachObject: coachObject,
+		CoachWithServices: coachWithServices,
 	}
 
 	err = g.SendAndClose(response)
@@ -158,7 +207,7 @@ func (c *CoachgRPC) UpdateCoach(g grpc.ClientStreamingServer[coachProtobuf.Updat
 		return status.Error(codes.InvalidArgument, "coach data is empty")
 	}
 
-	castedCoachData, ok := coachData.(coachProtobuf.CoachDataForUpdate)
+	castedCoachData, ok := coachData.(*coachProtobuf.CoachDataForUpdate)
 	if !ok {
 		logger.ErrorLogger.Printf("coach data is not of type CoachProtobuf.CoachDataForCreate")
 		return status.Error(codes.InvalidArgument, "coach data is not of type CoachProtobuf.CoachDataForCreate")
@@ -180,7 +229,11 @@ func (c *CoachgRPC) UpdateCoach(g grpc.ClientStreamingServer[coachProtobuf.Updat
 	var previousPhoto []byte
 	if coachPhoto != nil {
 		previousPhoto, err = c.cloudUseCase.GetObjectByName(context.TODO(), "coach/"+cmd.Id.String())
-		if err != nil {
+
+		var respErr *types.NoSuchKey
+		if errors.As(err, &respErr) {
+
+		} else {
 			logger.ErrorLogger.Printf("Failed to get previos photo from cloud: %v", err)
 			return err
 		}
@@ -207,6 +260,28 @@ func (c *CoachgRPC) UpdateCoach(g grpc.ClientStreamingServer[coachProtobuf.Updat
 		return status.Error(codes.Internal, "Failed to create coach")
 	}
 
+	updateCoachServicesRequest := &serviceGRPC.UpdateCoachServicesRequest{
+		CoachService: &serviceGRPC.CoachService{
+			CoachId:   coach.Id.String(),
+			ServiceId: castedCoachData.CoachServiceIds,
+		},
+	}
+	services, err := (*c.serviceClient).UpdateCoachServices(context.TODO(), updateCoachServicesRequest)
+	if err != nil {
+		return err
+	}
+
+	var coachesServices *serviceGRPC.GetCoachesServicesResponse
+	if services != nil {
+		getCoachesServicesRequest := &serviceGRPC.GetCoachesServicesRequest{
+			CoachIds: []string{coach.Id.String()},
+		}
+		coachesServices, err = (*c.serviceClient).GetCoachesServices(context.TODO(), getCoachesServicesRequest)
+		if err != nil {
+			return err
+		}
+	}
+
 	coachObject := &coachProtobuf.CoachObject{
 		Id:          coach.Id.String(),
 		Name:        coach.Name,
@@ -216,11 +291,24 @@ func (c *CoachgRPC) UpdateCoach(g grpc.ClientStreamingServer[coachProtobuf.Updat
 		UpdatedTime: coach.UpdatedTime.String(),
 	}
 
-	updateCoachResponse := &coachProtobuf.UpdateCoachResponse{
-		CoachObject: coachObject,
+	var coachWithServices *coachProtobuf.CoachWithServices
+	if coachesServices != nil {
+		coachWithServices = &coachProtobuf.CoachWithServices{
+			Coach:    coachObject,
+			Services: coachesServices.CoachIdsWithServices[0].ServiceObjects,
+		}
+	} else {
+		coachWithServices = &coachProtobuf.CoachWithServices{
+			Coach:    coachObject,
+			Services: nil,
+		}
 	}
 
-	err = g.SendAndClose(updateCoachResponse)
+	response := &coachProtobuf.UpdateCoachResponse{
+		CoachWithServices: coachWithServices,
+	}
+
+	err = g.SendAndClose(response)
 	if err != nil {
 		logger.ErrorLogger.Printf("Failed to send coach update response: %v", err)
 		return err
@@ -309,7 +397,7 @@ func GetObjectData[T any, R any](
 			return nil, nil, err
 		}
 
-		if ud := extractObjectData(chunk); ud != nil {
+		if ud := extractObjectData(chunk); ud != nil && !reflect.ValueOf(ud).IsNil() {
 			objectData = ud
 		}
 
