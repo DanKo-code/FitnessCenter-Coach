@@ -6,6 +6,7 @@ import (
 	customErrors "github.com/DanKo-code/FitnessCenter-Coach/internal/errors"
 	"github.com/DanKo-code/FitnessCenter-Coach/internal/models"
 	"github.com/DanKo-code/FitnessCenter-Coach/internal/repository"
+	"github.com/DanKo-code/FitnessCenter-Coach/internal/usecase"
 	"github.com/DanKo-code/FitnessCenter-Coach/pkg/logger"
 	coachGRPC "github.com/DanKo-code/FitnessCenter-Protobuf/gen/FitnessCenter.protobuf.coach"
 	reviewGRPC "github.com/DanKo-code/FitnessCenter-Protobuf/gen/FitnessCenter.protobuf.review"
@@ -20,6 +21,7 @@ type CoachUseCase struct {
 	serviceClient *serviceGRPC.ServiceClient
 	reviewClient  *reviewGRPC.ReviewClient
 	userClient    *userGRPC.UserClient
+	cloudUseCase  usecase.CloudUseCase
 }
 
 func NewCoachUseCase(
@@ -27,12 +29,15 @@ func NewCoachUseCase(
 	serviceClient *serviceGRPC.ServiceClient,
 	reviewClient *reviewGRPC.ReviewClient,
 	userClient *userGRPC.UserClient,
+	cloudUseCase usecase.CloudUseCase,
 ) *CoachUseCase {
 	return &CoachUseCase{
 		coachRepo:     coachRepo,
 		serviceClient: serviceClient,
 		reviewClient:  reviewClient,
-		userClient:    userClient}
+		userClient:    userClient,
+		cloudUseCase:  cloudUseCase,
+	}
 }
 
 func (c *CoachUseCase) CreateCoach(
@@ -97,6 +102,11 @@ func (c *CoachUseCase) DeleteCoachById(
 	}
 
 	err = c.coachRepo.DeleteCoachById(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	err = c.cloudUseCase.DeleteObject(ctx, "coach/"+coach.Id.String())
 	if err != nil {
 		return nil, err
 	}

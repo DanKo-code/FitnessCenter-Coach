@@ -60,8 +60,6 @@ func NewAppGRPC(cloudConfig *models.CloudConfig) (*AppGRPC, error) {
 	}
 	userClient := userGRPC.NewUserClient(connUser)
 
-	coachUseCase := user_usecase.NewCoachUseCase(repository, &serviceClient, &reviewClient, &userClient)
-
 	awsCfg, err := config.LoadDefaultConfig(context.TODO(),
 		config.WithRegion(cloudConfig.Region),
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(cloudConfig.Key, cloudConfig.Secret, "")),
@@ -77,6 +75,8 @@ func NewAppGRPC(cloudConfig *models.CloudConfig) (*AppGRPC, error) {
 	})
 
 	localStackUseCase := localstack_usecase.NewLocalstackUseCase(client, cloudConfig)
+
+	coachUseCase := user_usecase.NewCoachUseCase(repository, &serviceClient, &reviewClient, &userClient, localStackUseCase)
 
 	gRPCServer := grpc.NewServer()
 
