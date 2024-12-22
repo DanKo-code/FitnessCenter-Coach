@@ -2,6 +2,7 @@ package user_usecase
 
 import (
 	"context"
+	"fmt"
 	"github.com/DanKo-code/FitnessCenter-Coach/internal/dtos"
 	customErrors "github.com/DanKo-code/FitnessCenter-Coach/internal/errors"
 	"github.com/DanKo-code/FitnessCenter-Coach/internal/models"
@@ -13,6 +14,7 @@ import (
 	serviceGRPC "github.com/DanKo-code/FitnessCenter-Protobuf/gen/FitnessCenter.protobuf.service"
 	userGRPC "github.com/DanKo-code/FitnessCenter-Protobuf/gen/FitnessCenter.protobuf.user"
 	"github.com/google/uuid"
+	"strings"
 	"time"
 )
 
@@ -106,7 +108,16 @@ func (c *CoachUseCase) DeleteCoachById(
 		return nil, err
 	}
 
-	err = c.cloudUseCase.DeleteObject(ctx, "coach/"+coach.Id.String())
+	prefix := "coach/"
+	index := strings.Index(coach.Photo, prefix)
+	var s3PhotoKey string
+	if index != -1 {
+		s3PhotoKey = coach.Photo[index+len(prefix):]
+	} else {
+		logger.ErrorLogger.Printf("Prefix not found")
+		return nil, fmt.Errorf("prefix not found")
+	}
+	err = c.cloudUseCase.DeleteObject(ctx, "coach/"+s3PhotoKey)
 	if err != nil {
 		return nil, err
 	}

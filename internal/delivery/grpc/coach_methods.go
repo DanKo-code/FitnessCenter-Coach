@@ -9,7 +9,6 @@ import (
 	"github.com/DanKo-code/FitnessCenter-Coach/pkg/logger"
 	coachProtobuf "github.com/DanKo-code/FitnessCenter-Protobuf/gen/FitnessCenter.protobuf.coach"
 	serviceGRPC "github.com/DanKo-code/FitnessCenter-Protobuf/gen/FitnessCenter.protobuf.service"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -91,15 +90,6 @@ func (c *CoachgRPC) CreateCoach(g grpc.ClientStreamingServer[coachProtobuf.Creat
 
 	coach, err := c.coachUseCase.CreateCoach(context.TODO(), cmd)
 	if err != nil {
-
-		if photoURL == "" {
-			err := c.cloudUseCase.DeleteObject(context.TODO(), "coach/"+cmd.Id.String())
-			if err != nil {
-				logger.ErrorLogger.Printf("Failed to delete coach photo from cloud: %v", err)
-				return status.Error(codes.Internal, "Failed to delete coach photo in cloud")
-			}
-		}
-
 		return status.Error(codes.Internal, "Failed to create coach")
 	}
 
@@ -226,19 +216,9 @@ func (c *CoachgRPC) UpdateCoach(g grpc.ClientStreamingServer[coachProtobuf.Updat
 	}
 
 	var photoURL string
-	var previousPhoto []byte
+	randomID := uuid.New().String()
 	if coachPhoto != nil {
-		previousPhoto, err = c.cloudUseCase.GetObjectByName(context.TODO(), "coach/"+cmd.Id.String())
-
-		var respErr *types.NoSuchKey
-		if errors.As(err, &respErr) {
-
-		} else {
-			logger.ErrorLogger.Printf("Failed to get previos photo from cloud: %v", err)
-			return err
-		}
-
-		url, err := c.cloudUseCase.PutObject(context.TODO(), coachPhoto, "coach/"+cmd.Id.String())
+		url, err := c.cloudUseCase.PutObject(context.TODO(), coachPhoto, "coach/"+randomID)
 		photoURL = url
 		if err != nil {
 			logger.ErrorLogger.Printf("Failed to create coach photo in cloud: %v", err)
@@ -250,13 +230,6 @@ func (c *CoachgRPC) UpdateCoach(g grpc.ClientStreamingServer[coachProtobuf.Updat
 
 	coach, err := c.coachUseCase.UpdateCoach(context.TODO(), cmd)
 	if err != nil {
-
-		_, err := c.cloudUseCase.PutObject(context.TODO(), previousPhoto, "coach/"+cmd.Id.String())
-		if err != nil {
-			logger.ErrorLogger.Printf("Failed to set previous photo in cloud: %v", err)
-			return status.Error(codes.Internal, "Failed to create coach photo in cloud")
-		}
-
 		return status.Error(codes.Internal, "Failed to create coach")
 	}
 
