@@ -8,6 +8,7 @@ import (
 	"github.com/DanKo-code/FitnessCenter-Coach/pkg/logger"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"strings"
 )
 
 type LocalstackUseCase struct {
@@ -34,6 +35,9 @@ func (luc *LocalstackUseCase) PutObject(ctx context.Context, object []byte, name
 	}
 
 	fileURL := fmt.Sprintf("%s/%s/%s", luc.config.EndPoint, luc.config.Bucket, name)
+
+	//change to localhost
+	fileURL = strings.Replace(fileURL, "localstack", "localhost", 1)
 
 	return fileURL, nil
 }
