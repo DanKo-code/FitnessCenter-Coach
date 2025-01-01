@@ -55,22 +55,15 @@ func (luc *LocalstackUseCase) DeleteObject(ctx context.Context, name string) err
 	return nil
 }
 
-func (luc *LocalstackUseCase) GetObjectByName(ctx context.Context, name string) ([]byte, error) {
-	object, err := luc.client.GetObject(ctx, &s3.GetObjectInput{
+func (luc *LocalstackUseCase) ObjectExists(ctx context.Context, name string) (bool, error) {
+	_, err := luc.client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(luc.config.Bucket),
 		Key:    aws.String(name),
 	})
 	if err != nil {
-		logger.ErrorLogger.Printf("Failed to get object: %v", err)
-		return nil, err
+		logger.ErrorLogger.Printf("Failed to check object existence: %v", err)
+		return false, err
 	}
 
-	var photo []byte
-	_, err = object.Body.Read(photo)
-	if err != nil {
-		logger.ErrorLogger.Printf("Failed to read object: %v", err)
-		return nil, err
-	}
-
-	return photo, nil
+	return true, nil
 }

@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"io"
 	"reflect"
+	"strings"
 	"time"
 )
 
@@ -210,7 +211,7 @@ func (c *CoachgRPC) UpdateCoach(g grpc.ClientStreamingServer[coachProtobuf.Updat
 		UpdatedTime: time.Now(),
 	}
 
-	_, err = c.coachUseCase.GetCoachById(context.TODO(), uuid.MustParse(castedCoachData.Id))
+	existingCoach, err := c.coachUseCase.GetCoachById(context.TODO(), uuid.MustParse(castedCoachData.Id))
 	if err != nil {
 		return status.Error(codes.NotFound, "coach not found")
 	}
@@ -218,6 +219,29 @@ func (c *CoachgRPC) UpdateCoach(g grpc.ClientStreamingServer[coachProtobuf.Updat
 	var photoURL string
 	randomID := uuid.New().String()
 	if coachPhoto != nil {
+		if existingCoach.Photo != "" {
+			prefix := "coach/"
+			index := strings.Index(existingCoach.Photo, prefix)
+			var s3PhotoKey string
+			if index != -1 {
+				s3PhotoKey = existingCoach.Photo[index+len(prefix):]
+			} else {
+				logger.ErrorLogger.Printf("Prefix not found")
+			}
+
+			exists, err := c.cloudUseCase.ObjectExists(context.TODO(), "coach/"+s3PhotoKey)
+			if err != nil {
+				return status.Error(codes.Internal, "can't find previous photo meta")
+			}
+
+			if exists {
+				err := c.cloudUseCase.DeleteObject(context.TODO(), "coach/"+s3PhotoKey)
+				if err != nil {
+					return err
+				}
+			}
+		}
+
 		url, err := c.cloudUseCase.PutObject(context.TODO(), coachPhoto, "coach/"+randomID)
 		photoURL = url
 		if err != nil {
