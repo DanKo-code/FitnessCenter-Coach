@@ -108,20 +108,22 @@ func (c *CoachUseCase) DeleteCoachById(
 		return nil, err
 	}
 
-	prefix := "coach/"
-	index := strings.Index(coach.Photo, prefix)
-	var s3PhotoKey string
-	if index != -1 {
-		s3PhotoKey = coach.Photo[index+len(prefix):]
-	} else {
-		logger.ErrorLogger.Printf("Prefix not found")
-		return nil, fmt.Errorf("prefix not found")
+	if coach.Photo != "" {
+		prefix := "coach/"
+		index := strings.Index(coach.Photo, prefix)
+		var s3PhotoKey string
+		if index != -1 {
+			s3PhotoKey = coach.Photo[index+len(prefix):]
+		} else {
+			logger.ErrorLogger.Printf("Prefix not found")
+			return nil, fmt.Errorf("prefix not found")
+		}
+		err = c.cloudUseCase.DeleteObject(ctx, "coach/"+s3PhotoKey)
+		if err != nil {
+			return nil, err
+		}
 	}
-	err = c.cloudUseCase.DeleteObject(ctx, "coach/"+s3PhotoKey)
-	if err != nil {
-		return nil, err
-	}
-
+	
 	return coach, nil
 }
 
